@@ -1,0 +1,185 @@
+{
+  "guilds": {
+    "1503737720776953876": {
+      "dashboard_channel_id": 1506956486704627773,
+      "dashboard_message_id": 1507013655999414475,
+      "logs_channel_id": 1506952548353970207,
+      "rooms": {
+        "1257565897955082302": {
+          "owner_id": 1257565897955082302,
+          "category_id": 1507285464468422667,
+          "text_channel_id": 1507285466326634550,
+          "voice_channel_id": 1507285467736047698,
+          "status": "open",
+          "guest_ids": [
+            1235532054469279755
+          ],
+          "extra_channel_ids": [],
+          "archived": false,
+          "created_at": "2026-05-22T07:34:19.825443+00:00",
+          "updated_at": "2026-05-22T07:35:12.019690+00:00",
+          "last_active_at": "2026-05-22T07:34:19.825455+00:00",
+          "panel_message_id": 1507285469061451776
+        }
+      },
+      "requests": {
+        "bcf61384ea32": {
+          "id": "bcf61384ea32",
+          "status": "denied",
+          "action": "rename_channel",
+          "payload": {
+            "target": "chat",
+            "new_name": "asdasd"
+          },
+          "owner_id": 1235532054469279755,
+          "requester_id": 1235532054469279755,
+          "category_id": 1506972553112195112,
+          "created_at": "2026-05-21T10:51:10.255702+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1506972617314402314,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:58:12.985367+00:00",
+          "result": "Заявка отклонена."
+        },
+        "4702d64fd306": {
+          "id": "4702d64fd306",
+          "status": "denied",
+          "action": "create_channel",
+          "payload": {
+            "channel_type": "voice",
+            "name": "епа"
+          },
+          "owner_id": 1257565897955082302,
+          "requester_id": 1257565897955082302,
+          "category_id": 1507013713792729192,
+          "created_at": "2026-05-21T14:53:06.309425+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1507033501461909674,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:53:30.938173+00:00",
+          "result": "Заявка отклонена."
+        },
+        "ff3be76d02f3": {
+          "id": "ff3be76d02f3",
+          "status": "approved",
+          "action": "create_channel",
+          "payload": {
+            "channel_type": "text",
+            "name": "йцу"
+          },
+          "owner_id": 1257565897955082302,
+          "requester_id": 1257565897955082302,
+          "category_id": 1507013713792729192,
+          "created_at": "2026-05-21T14:55:57.951475+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1507034221384958082,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:56:17.314237+00:00",
+          "result": "Создан канал <#1507034302603329728>."
+        },
+        "46ead4e73d46": {
+          "id": "46ead4e73d46",
+          "status": "approved",
+          "action": "create_channel",
+          "payload": {
+            "channel_type": "voice",
+            "name": "фывфыв"
+          },
+          "owner_id": 1257565897955082302,
+          "requester_id": 1257565897955082302,
+          "category_id": 1507013713792729192,
+          "created_at": "2026-05-21T14:56:03.847124+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1507034246647382126,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:56:21.365780+00:00",
+          "result": "Создан канал `фывфыв`."
+        },
+        "85fa89005f08": {
+          "id": "85fa89005f08",
+          "status": "failed",
+          "action": "rename_channel",
+          "payload": {
+            "target": "пекп",
+            "new_name": "аптра"
+          },
+          "owner_id": 1257565897955082302,
+          "requester_id": 1257565897955082302,
+          "category_id": 1507013713792729192,
+          "created_at": "2026-05-21T14:56:40.553134+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1507034399936483488,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:56:45.572128+00:00",
+          "result": "целевой канал не найден в комнате"
+        },
+        "add8dc123118": {
+          "id": "add8dc123118",
+          "status": "approved",
+          "action": "rename_channel",
+          "payload": {
+            "target": "1507013715168334015",
+            "new_name": "йцуйцуйцу"
+          },
+          "owner_id": 1257565897955082302,
+          "requester_id": 1257565897955082302,
+          "category_id": 1507013713792729192,
+          "created_at": "2026-05-21T14:57:03.956385+00:00",
+          "channel_id": 1506952548353970207,
+          "message_id": 1507034498347569212,
+          "processed_by": 1257565897955082302,
+          "processed_at": "2026-05-21T14:57:07.862908+00:00",
+          "result": "Переименовано в `йцуйцуйцу`."
+        }
+      }
+    },
+    "1095019322151288872": {
+      "dashboard_channel_id": null,
+      "dashboard_message_id": null,
+      "logs_channel_id": null,
+      "rooms": {},
+      "requests": {}
+    },
+    "1507265791278583838": {
+      "dashboard_channel_id": 1507302842237452389,
+      "dashboard_message_id": 1507304563106119761,
+      "logs_channel_id": 1507293989525520494,
+      "rooms": {
+        "1304740332751028277": {
+          "owner_id": 1304740332751028277,
+          "category_id": 1507304682274689055,
+          "text_channel_id": 1507304683973382176,
+          "voice_channel_id": 1507304685437194391,
+          "status": "private",
+          "guest_ids": [
+            1257565897955082302,
+            1235530147139162155
+          ],
+          "extra_channel_ids": [],
+          "archived": false,
+          "created_at": "2026-05-22T08:50:41.722129+00:00",
+          "updated_at": "2026-05-22T08:51:44.885113+00:00",
+          "last_active_at": "2026-05-22T08:50:41.722144+00:00",
+          "panel_message_id": 1507304686636634142
+        },
+        "1257565897955082302": {
+          "owner_id": 1257565897955082302,
+          "category_id": 1507639997241622578,
+          "text_channel_id": 1507639998818816061,
+          "voice_channel_id": 1507640000437682349,
+          "status": "private",
+          "guest_ids": [
+            1304740332751028277
+          ],
+          "extra_channel_ids": [],
+          "archived": false,
+          "created_at": "2026-05-23T07:03:07.026995+00:00",
+          "updated_at": "2026-05-23T07:03:46.971813+00:00",
+          "last_active_at": "2026-05-23T07:03:07.027015+00:00",
+          "panel_message_id": 1507640001981190165
+        }
+      },
+      "requests": {}
+    }
+  }
+}
