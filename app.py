@@ -4,6 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import asyncio
 
 import discord
 from discord import app_commands
@@ -13,9 +14,13 @@ from discord.ext import commands, tasks
 CONFIG_PATH = Path(__file__).with_name("rooms_config.json")
 ENV_PATH = Path(__file__).with_name(".env")
 DASHBOARD_CHANNEL_NAME = "room-dashboard"
+
 LOGS_CHANNEL_NAME = "🗈》комнаты"
 ACTIVITY_LOG_CHANNEL_NAME = "🗈》активности"
-PERSONAL_MUTE_LOG_CHANNEL_NAME = "🗈》пользовательские"
+USER_LOG_CHANNEL_NAME = "🗈》пользовательские"
+VOICE_LOG_CHANNEL_NAME = "🗈》голосовые"
+TEXT_LOG_CHANNEL_NAME = "🗈》текстовые"
+
 ROOM_TEXT_CHANNEL_NAME = "chat"
 ROOM_VOICE_CHANNEL_NAME = "voice"
 ROOM_VOICE_USER_LIMIT = 99
@@ -37,6 +42,8 @@ intents = discord.Intents.default()
 intents.members = True
 intents.voice_states = True
 intents.presences = True
+intents.message_content = True
+intents.moderation = True
 
 
 class MyBot(commands.Bot):
@@ -117,6 +124,17 @@ def guild_config(guild: discord.Guild) -> dict:
     config.setdefault("requests", {})
     return config
 
+async def get_target_log_channel(guild: discord.Guild, channel: discord.abc.GuildChannel | None, default_channel_name: str) -> discord.TextChannel | None:
+    """Определяет, куда слать лог: в общий канал или в логи комнат, если действие было в комнате."""
+    target_name = default_channel_name
+    
+    if channel:
+        # Проверяем, принадлежит ли канал личной комнате (используем вашу готовую функцию)
+        _, room = get_room_by_channel(guild, channel)
+        if room:
+            target_name = LOGS_CHANNEL_NAME # "🗈》комнаты"
+            
+    return discord.utils.get(guild.text_channels, name=target_name)
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1454,6 +1472,236 @@ class AdminRoomsView(SafeView):
         super().__init__(timeout=300)
         self.add_item(AdminRoomSelect(guild))
 
+# =====================================================================
+# 1. ПОЛЬЗОВАТЕЛЬСКИЕ ЛОГИ (Вход, выход, ники, таймауты, кики, баны)
+# =====================================================================
+
+@bot.event
+async def on_member_join(member):
+    log_ch = discord.utils.get(member.guild.text_channels, name=USER_LOG_CHANNEL_NAME)
+    if log_ch:
+        embed = discord.Embed(
+            description=f"📥 <@{member.id}> (`{member.name}`) присоединился к серверу.",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+
+@bot.event
+async def on_member_remove(member):
+    log_ch = discord.utils.get(member.guild.text_channels, name=USER_LOG_CHANNEL_NAME)
+    if not log_ch: return
+
+    await asyncio.sleep(0.5)
+    async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=3):
+        # ДОБАВЛЕНА ПРОВЕРКА: entry.target and ...
+        if entry.target and entry.target.id == member.id and (discord.utils.utcnow() - entry.created_at).total_seconds() < 10:
+            embed = discord.Embed(
+                description=f"👢 <@{member.id}> был **кикнут** администратором <@{entry.user.id}>.\n**Причина:** `{entry.reason or 'Не указана'}`",
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+            await log_ch.send(embed=embed)
+            return
+
+    embed = discord.Embed(
+        description=f"📤 <@{member.id}> (`{member.name}`) покинул сервер.",
+        color=discord.Color.red(),
+        timestamp=discord.utils.utcnow()
+    )
+    await log_ch.send(embed=embed)
+
+@bot.event
+async def on_member_ban(guild, user):
+    log_ch = discord.utils.get(guild.text_channels, name=USER_LOG_CHANNEL_NAME)
+    if not log_ch: return
+    
+    await asyncio.sleep(0.5)
+    async for entry in guild.audit_logs(action=discord.AuditLogAction.ban, limit=3):
+        # ДОБАВЛЕНА ПРОВЕРКА: entry.target and ...
+        if entry.target and entry.target.id == user.id:
+            embed = discord.Embed(
+                description=f"🔨 <@{user.id}> получил **бан** от <@{entry.user.id}>.\n**Причина:** `{entry.reason or 'Не указана'}`",
+                color=discord.Color.dark_red(),
+                timestamp=discord.utils.utcnow()
+            )
+            await log_ch.send(embed=embed)
+            return
+
+@bot.event
+async def on_member_unban(guild, user):
+    log_ch = discord.utils.get(guild.text_channels, name=USER_LOG_CHANNEL_NAME)
+    if log_ch:
+        embed = discord.Embed(
+            description=f"🕊️ <@{user.id}> был **разбанен**.",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+
+@bot.event
+async def on_member_update(before, after):
+    log_ch = discord.utils.get(after.guild.text_channels, name=USER_LOG_CHANNEL_NAME)
+    if not log_ch: return
+
+    # Никнейм
+    if before.nick != after.nick:
+        old = before.nick or before.name
+        new = after.nick or after.name
+        embed = discord.Embed(
+            description=f"✏️ <@{after.id}> изменил ник: `{old}` ➡️ `{new}`",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+
+    # Таймаут
+    if before.timed_out_until != after.timed_out_until:
+        if after.timed_out_until:
+            embed = discord.Embed(
+                description=f"⏳ <@{after.id}> получил **таймаут** до <t:{int(after.timed_out_until.timestamp())}:f>.",
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+            await log_ch.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                description=f"🔄 <@{after.id}> **снят таймаут**.",
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            await log_ch.send(embed=embed)
+
+
+# =====================================================================
+# 2. ТЕКСТОВЫЕ ЛОГИ (Удаление, изменение сообщений)
+# =====================================================================
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot or not message.guild: return
+    
+    log_ch = await get_target_log_channel(message.guild, message.channel, TEXT_LOG_CHANNEL_NAME)
+    if log_ch:
+        content = message.content or "*<Вложение/Стикер>*"
+        # Ограничиваем длину текста, чтобы не превысить лимиты Embed (макс 4096 символов)
+        embed = discord.Embed(
+            description=f"🗑️ Сообщение от <@{message.author.id}> удалено в <#{message.channel.id}>:\n\n> {content[:3800]}",
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or not before.guild: return
+    if before.content == after.content: return # Игнорируем загрузку превью ссылок
+    
+    log_ch = await get_target_log_channel(before.guild, before.channel, TEXT_LOG_CHANNEL_NAME)
+    if log_ch:
+        embed = discord.Embed(
+            description=f"📝 <@{before.author.id}> изменил сообщение в <#{before.channel.id}>:\n\n**Было:**\n{before.content[:1900]}\n\n**Стало:**\n{after.content[:1900]}",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+
+
+# =====================================================================
+# 3. ГОЛОСОВЫЕ ЛОГИ (Входы, выходы, муты, админ-действия)
+# =====================================================================
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if member.bot: return
+
+    relevant_channel = after.channel or before.channel
+    log_ch = await get_target_log_channel(member.guild, relevant_channel, VOICE_LOG_CHANNEL_NAME)
+    if not log_ch: return
+
+    if before.channel is None and after.channel is not None:
+            embed = discord.Embed(description=f"📞 <@{member.id}> зашел в <#{after.channel.id}>", color=discord.Color.green())
+            await log_ch.send(embed=embed)
+            return
+
+    # 2. Отключение (Сам или кикнул админ)
+    if before.channel is not None and after.channel is None:
+        await asyncio.sleep(0.6)  # ПАУЗА: ждем, пока API запишет действие админа
+        
+        async for entry in member.guild.audit_logs(action=discord.AuditLogAction.member_disconnect, limit=3):
+            # Проверяем, что кик был по нашей цели и совсем недавно
+            if entry.target and entry.target.id == member.id and (discord.utils.utcnow() - entry.created_at).total_seconds() < 5:
+                embed = discord.Embed(description=f"🚷 <@{member.id}> отключен от <#{before.channel.id}> админом <@{entry.user.id}>", color=discord.Color.orange())
+                await log_ch.send(embed=embed)
+                return
+        
+        embed = discord.Embed(description=f"☎️ <@{member.id}> вышел из <#{before.channel.id}>", color=discord.Color.red())
+        await log_ch.send(embed=embed)
+        return
+
+    # 3. Переход между каналами (Сам или перетянул админ)
+    if before.channel != after.channel and after.channel is not None:
+        await asyncio.sleep(0.6)  # ПАУЗА: ждем, пока API запишет действие админа
+        
+        async for entry in member.guild.audit_logs(action=discord.AuditLogAction.member_move, limit=3):
+            if entry.target and entry.target.id == member.id and (discord.utils.utcnow() - entry.created_at).total_seconds() < 5:
+                embed = discord.Embed(description=f"🔀 <@{member.id}> перемещен из <#{before.channel.id}> в <#{after.channel.id}> админом <@{entry.user.id}>", color=discord.Color.blue())
+                await log_ch.send(embed=embed)
+                return
+                
+        embed = discord.Embed(description=f"🚶 <@{member.id}> перешел в <#{after.channel.id}>", color=discord.Color.teal())
+        await log_ch.send(embed=embed)
+        return
+
+    # 4. Наушники (Деаф)
+    if before.self_deaf != after.self_deaf:
+        state = "отключил" if after.self_deaf else "включил"
+        embed = discord.Embed(
+            description=f"🎧 <@{member.id}> самостоятельно {state} звук (уши)",
+            color=discord.Color.dark_grey(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+        return
+        
+    if before.deaf != after.deaf:
+        state = "отключили" if after.deaf else "включили"
+        embed = discord.Embed(
+            description=f"⛔ <@{member.id}> — ему **{state}** звук админом",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+        return
+
+    # 5. Микрофон (Мут)
+    if before.self_mute != after.self_mute:
+        state = "замутился" if after.self_mute else "размутился"
+        embed = discord.Embed(
+            description=f"🎙️ <@{member.id}> самостоятельно {state}",
+            color=discord.Color.dark_grey(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+        return
+        
+    if before.mute != after.mute:
+        state = "замучен" if after.mute else "размучен"
+        embed = discord.Embed(
+            description=f"🔇 <@{member.id}> был **{state}** админом",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        await log_ch.send(embed=embed)
+        return
+
+def add_user_author(embed: discord.Embed, member: discord.Member):
+    """Добавляет автора в левый верхний угол эмбеда."""
+    embed.set_author(
+        name=member.display_name,
+        icon_url=member.display_avatar.url
+    )
+    return embed
 
 class AdminRoomSelect(discord.ui.Select):
     def __init__(self, guild: discord.Guild):
@@ -2345,32 +2593,6 @@ async def on_ready():
 
 
 @bot.event
-async def on_voice_state_update(member, before, after):
-    # Игнорируем действия других ботов, чтобы избежать спама
-    if member.bot:
-        return
-
-    # Ищем канал для логирования мутов на сервере пользователя
-    mute_channel = discord.utils.get(member.guild.text_channels, name=PERSONAL_MUTE_LOG_CHANNEL_NAME)
-    if not mute_channel:
-        return  # Если канал не найден, ничего не делаем
-
-    # 1. Проверяем изменение состояния микрофона (self_mute)
-    if before.self_mute != after.self_mute:
-        if after.self_mute:
-            await mute_channel.send(f"🔴 **{member.name}** (`{member.id}`) самостоятельно выключил микрофон.")
-        else:
-            await mute_channel.send(f" green_circle: **{member.name}** (`{member.id}`) самостоятельно включил микрофон.")
-
-    # 2. Проверяем изменение состояния звука наушников (self_deaf)
-    if before.self_deaf != after.self_deaf:
-        if after.self_deaf:
-            await mute_channel.send(f"🔇 **{member.name}** (`{member.id}`) отключил звук в наушниках.")
-        else:
-            await mute_channel.send(f"🔊 **{member.name}** (`{member.id}`) включил звук в наушниках.")
-
-
-@bot.event
 async def on_presence_update(before, after):
     if after.bot:
         return
@@ -2380,45 +2602,61 @@ async def on_presence_update(before, after):
     if not activity_channel:
         return
 
+    message_text = ''
+
     # 1. Проверяем изменение сетевого статуса (В сети, Не беспокоить, Неактивен, Офлайн)
     if before.status != after.status:
         # Переводим статусы на русский для красоты
         status_names = {
-            discord.Status.online: "🟢 В сети",
-            discord.Status.idle: "🌙 Неактивен (АФК)",
-            discord.Status.dnd: "⛔ Не беспокоить",
-            discord.Status.offline: "⚫ Не в сети"
+            discord.Status.online: "🟢",
+            discord.Status.idle: "🌙",
+            discord.Status.dnd: "⛔",
+            discord.Status.offline: "⚫"
         }
         old_status = status_names.get(before.status, str(before.status))
         new_status = status_names.get(after.status, str(after.status))
         
-        await activity_channel.send(f"👤 **{after.name}** изменил статус: с `{old_status}` на `{new_status}`.")
+        device_emoji = "👤" # По умолчанию, если устройство не определилось
+        
+        if before.mobile_status != after.mobile_status:
+            device_emoji = "📱"  # Телефон
+        elif before.desktop_status != after.desktop_status:
+            device_emoji = "💻"  # Компьютер/Ноутбук
+        elif before.web_status != after.web_status:
+            device_emoji = "🌐"  # Браузер
+        message_text = f"-# {device_emoji} <@{after.id}> изменил статус: с `{old_status}` на `{new_status}`"
+        #await activity_channel.send(f"-# 👤 <@{after.id}> изменил статус: с `{old_status}` на `{new_status}`",allowed_mentions=discord.AllowedMentions.none())
 
     # 2. Проверяем изменение активности (игры, стримы, Spotify)
     if before.activities != after.activities:
-        # Получаем названия активностей (если их несколько)
-        before_acts = [act.name for act in before.activities] if before.activities else []
-        after_acts = [act.name for act in after.activities] if after.activities else []
+            # Фильтруем активности: убираем CustomActivity (пользовательские статусы)
+            before_acts = [
+                act.name for act in before.activities 
+                if not isinstance(act, discord.CustomActivity)
+            ]
+            after_acts = [
+                act.name for act in after.activities 
+                if not isinstance(act, discord.CustomActivity)
+            ]
 
-        # Если пользователь запустил что-то новое
-        started = [act for act in after_acts if act not in before_acts]
-        # Если пользователь закрыл игру/приложение
-        finished = [act for act in before_acts if act not in after_acts]
+            # Если пользователь запустил реальную игру/приложение
+            started = [act for act in after_acts if act not in before_acts]
+            # Если пользователь закрыл игру/приложение
+            finished = [act for act in before_acts if act not in after_acts]
+            for act in started:
+                if message_text:
+                    message_text += f"\n> -# 🎮 <@{after.id}> запустил: `{act}`"
+                else:
+                    message_text = f"-# 🎮 <@{after.id}> запустил: `{act}`"
+                    
+            for act in finished:
+                if message_text:
+                    message_text += f"\n> -# 🛑 <@{after.id}> закрыл: `{act}`"
+                else:
+                    message_text = f"-# 🛑 <@{after.id}> закрыл: `{act}`"
+    if message_text:
+        await activity_channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
 
-        for act in started:
-            await activity_channel.send(f"🎮 **{after.name}** запустил: **{act}**")
-        for act in finished:
-            await activity_channel.send(f"🛑 **{after.name}** закрыл: **{act}**")
-
-
-@bot.event
-async def on_presence_update(before, after):
-    if before.status != after.status:
-        print(f"👤 Пользователь {after.name} изменил статус с {before.status} на {after.status}")
-
-    if before.activities != after.activities:
-        current_activity = after.activity.name if after.activity else "Ничего"
-        print(f"🎮 {after.name} сейчас занимается: {current_activity}")
 
 @bot.tree.command(name="setup_rooms", description="Создать или обновить дэшборд личных комнат")
 @app_commands.guild_only()
