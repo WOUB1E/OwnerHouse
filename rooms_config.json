@@ -5,7 +5,7 @@
       "dashboard_message_id": 1507013655999414475,
       "logs_channel_id": 1506952548353970207,
       "rooms": {
-        "1257565897955082302": {
+        "archived:1507285464468422667": {
           "owner_id": 1257565897955082302,
           "category_id": 1507285464468422667,
           "text_channel_id": 1507285466326634550,
@@ -15,11 +15,13 @@
             1235532054469279755
           ],
           "extra_channel_ids": [],
-          "archived": false,
+          "archived": true,
           "created_at": "2026-05-22T07:34:19.825443+00:00",
-          "updated_at": "2026-05-22T07:35:12.019690+00:00",
+          "updated_at": "2026-06-06T07:34:53.043821+00:00",
           "last_active_at": "2026-05-22T07:34:19.825455+00:00",
-          "panel_message_id": 1507285469061451776
+          "panel_message_id": 1507285469061451776,
+          "previous_status": "open",
+          "archived_at": "2026-06-06T07:34:53.043813+00:00"
         }
       },
       "requests": {
@@ -158,9 +160,11 @@
           "extra_channel_ids": [],
           "archived": false,
           "created_at": "2026-05-22T08:50:41.722129+00:00",
-          "updated_at": "2026-05-22T08:51:44.885113+00:00",
-          "last_active_at": "2026-05-22T08:50:41.722144+00:00",
-          "panel_message_id": 1507304686636634142
+          "updated_at": "2026-06-06T08:21:07.397374+00:00",
+          "last_active_at": "2026-06-06T08:21:07.397383+00:00",
+          "panel_message_id": 1507304686636634142,
+          "previous_status": "private",
+          "archived_at": null
         },
         "1257565897955082302": {
           "owner_id": 1257565897955082302,
@@ -174,9 +178,11 @@
           "extra_channel_ids": [],
           "archived": false,
           "created_at": "2026-05-23T07:03:07.026995+00:00",
-          "updated_at": "2026-05-23T07:03:46.971813+00:00",
-          "last_active_at": "2026-05-23T07:03:07.027015+00:00",
-          "panel_message_id": 1507640001981190165
+          "updated_at": "2026-06-06T08:21:18.184787+00:00",
+          "last_active_at": "2026-06-06T08:21:18.184794+00:00",
+          "panel_message_id": 1507640001981190165,
+          "previous_status": "private",
+          "archived_at": null
         }
       },
       "requests": {}
