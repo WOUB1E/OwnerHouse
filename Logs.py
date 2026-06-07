@@ -63,10 +63,10 @@ class Logs(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    def log_channel(self, guild: discord.Guild, name: str) -> discord.TextChannel | None:
-        if "хозяин" in channel_name.lower():
+    def log_channel(self, guild: discord.Guild, name: str, channel_name: str) -> discord.TextChannel | None:
+        channel_name_str = str(channel_name).lower()
+        if "хозяин" in channel_name_str:
             return None
-
         return discord.utils.get(guild.text_channels, name=name)
 
     async def target_log_channel(

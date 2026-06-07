@@ -4,6 +4,8 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
+from Activity import setup as setup_dashboard
+
 from Economy import setup as setup_economy
 from Logs import setup as setup_logs
 from Lvl import setup as setup_levels
@@ -31,6 +33,7 @@ class MyBot(commands.Bot):
         await setup_logs(self)
         await setup_levels(self)
         await setup_economy(self)
+        await setup_dashboard(self)
         await self.tree.sync()
         print(f"Синхронизированы команды для {self.user}")
 
@@ -57,6 +60,8 @@ def load_env_file() -> None:
 @bot.event
 async def on_ready():
     print(f"Бот {bot.user} запущен и готов к работе.")
+
+
 
 
 if __name__ == "__main__":
