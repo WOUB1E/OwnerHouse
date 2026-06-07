@@ -64,6 +64,9 @@ class Logs(commands.Cog):
         self.bot = bot
 
     def log_channel(self, guild: discord.Guild, name: str) -> discord.TextChannel | None:
+        if "хозяин" in channel_name.lower():
+            return None
+
         return discord.utils.get(guild.text_channels, name=name)
 
     async def target_log_channel(
@@ -373,7 +376,7 @@ class Logs(commands.Cog):
                 )
             else:
                 embed = discord.Embed(
-                    description=f"☎️ Вышел · {channel_name(before.channel)}",
+                    description=f"{compact_user(member)} выышел с {channel_name(before.channel)}",
                     color=discord.Color.red(),
                 )
             await self.send_embed(channel, embed, member)
