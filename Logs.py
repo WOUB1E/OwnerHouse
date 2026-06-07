@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from collections.abc import Iterable
 
 import discord
@@ -18,10 +20,8 @@ def add_user_author(embed: discord.Embed, user: discord.Member | discord.User) -
     embed.set_author(name=name, icon_url=user.display_avatar.url)
     return embed
 
-
 def compact_user(user: discord.Member | discord.User) -> str:
     return f"<@{user.id}>"
-
 
 def channel_name(channel: discord.abc.GuildChannel | None) -> str:
     if channel is None:
@@ -29,7 +29,6 @@ def channel_name(channel: discord.abc.GuildChannel | None) -> str:
     if isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel)):
         return channel.mention
     return f"`{channel.name}`"
-
 
 def truncate(value: str, limit: int = 900) -> str:
     value = discord.utils.escape_mentions((value or "").strip())
@@ -126,7 +125,7 @@ class Logs(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         embed = discord.Embed(
-            description=f"📥 Зашел на сервер · {compact_user(member)}",
+            description=f"{compact_user(member)} зашел на сервер 📥",
             color=discord.Color.green(),
         )
         await self.send_embed(self.log_channel(member.guild, USER_LOG_CHANNEL_NAME), embed, member)
@@ -137,25 +136,35 @@ class Logs(commands.Cog):
         if channel is None:
             return
 
-        await asyncio.sleep(0.6)
-        entry = await self.recent_audit_entry(
+        await asyncio.sleep(1.5)
+        ban_entry = await self.recent_audit_entry(
+            member.guild,
+            discord.AuditLogAction.ban,
+            member,
+            strict_target=True,
+        )
+        if ban_entry:
+            return
+
+        kick_entry = await self.recent_audit_entry(
             member.guild,
             discord.AuditLogAction.kick,
             member,
             strict_target=True,
         )
-        if entry:
-            reason = truncate(entry.reason or "не указана", 400)
-            executor = compact_user(entry.user) if entry.user else "`неизвестно`"
+        if kick_entry:
+            reason = truncate(kick_entry.reason or "не указана", 400)
+            executor = compact_user(kick_entry.user) if kick_entry.user else "`неизвестно`"
             embed = discord.Embed(
-                description=f"👢 Кик · модератор {executor}\nПричина: {reason}",
+                description=f"{compact_user(member)} был изгнан карателем {executor}\nПричина: {reason}",
                 color=discord.Color.orange(),
             )
             await self.send_embed(channel, embed, member)
             return
 
+        # 3. ОБЫЧНЫЙ ВЫХОД (если не бан и не кик)
         embed = discord.Embed(
-            description=f"📤 Покинул сервер · {compact_user(member)}",
+            description=f"{compact_user(member)} выебан кабаном в лесу 📤",
             color=discord.Color.red(),
         )
         await self.send_embed(channel, embed, member)
@@ -176,7 +185,7 @@ class Logs(commands.Cog):
         executor = compact_user(entry.user) if entry and entry.user else "`неизвестно`"
         reason = truncate(entry.reason if entry else "не указана", 400)
         embed = discord.Embed(
-            description=f"🔨 Бан · модератор {executor}\nПричина: {reason}",
+            description=f"{compact_user(user)} забанен карателем {executor}\nПричина: {reason}",
             color=discord.Color.dark_red(),
         )
         await self.send_embed(channel, embed, user)
@@ -196,40 +205,89 @@ class Logs(commands.Cog):
             return
 
         if before.nick != after.nick:
-            old = truncate(before.nick or before.name, 120)
-            new = truncate(after.nick or after.name, 120)
+            await asyncio.sleep(0.8)
+
+            entry = await self.recent_audit_entry(
+                after.guild,
+                discord.AuditLogAction.member_update,
+                after,
+                strict_target=True,
+            )
+
+            if entry and entry.user:
+                executor = compact_user(entry.user)
+            else:
+                executor = compact_user(after)
+
+            old_nick = truncate(before.nick or before.name, 120)
+            new_nick = truncate(after.nick or after.name, 120)
+
             embed = discord.Embed(
-                description=f"✏️ Ник · `{old}` → `{new}`",
+                description=f"✏️ {executor} изменил ник {compact_user(after)}",
                 color=discord.Color.blue(),
             )
+            
+            embed.add_field(name="Старый", value=f"`{old_nick}`", inline=True)
+            embed.add_field(name="Новый", value=f"`{new_nick}`", inline=True)
+
             await self.send_embed(channel, embed, after)
 
         if before.timed_out_until != after.timed_out_until:
+            await asyncio.sleep(0.8)
+            
+            entry = await self.recent_audit_entry(
+                after.guild,
+                discord.AuditLogAction.member_update,
+                after,
+                strict_target=True,
+            )
+            executor = compact_user(entry.user) if entry and entry.user else compact_user(after)
+
             if after.timed_out_until:
-                until = f"<t:{int(after.timed_out_until.timestamp())}:R>"
+                until_absolute = f"<t:{int(after.timed_out_until.timestamp())}:F>"
+                until_relative = f"<t:{int(after.timed_out_until.timestamp())}:R>"
+                
                 embed = discord.Embed(
-                    description=f"⏳ Таймаут · до {until}",
+                    description=(
+                        f"🤫 {executor} выдал тайм-аут {compact_user(after)}\n"
+                        f"**До:** {until_absolute} ({until_relative})"
+                    ),
                     color=discord.Color.orange(),
                 )
             else:
                 embed = discord.Embed(
-                    description="🔄 Таймаут снят",
+                    description=f"🔄 {executor} снял тайм-аут {compact_user(after)}",
                     color=discord.Color.green(),
                 )
             await self.send_embed(channel, embed, after)
 
         before_roles = set(before.roles)
         after_roles = set(after.roles)
-        added = [role.mention for role in after_roles - before_roles if not role.is_default()]
-        removed = [role.mention for role in before_roles - after_roles if not role.is_default()]
+        
+        added = [f"<@&{role.id}>" for role in after_roles - before_roles if not role.is_default()]
+        removed = [f"<@&{role.id}>" for role in before_roles - after_roles if not role.is_default()]
+        
         if added or removed:
-            lines = []
+            await asyncio.sleep(0.8)
+            
+            entry = await self.recent_audit_entry(
+                after.guild,
+                discord.AuditLogAction.member_update,
+                after,
+                strict_target=True,
+            )
+            executor = compact_user(entry.user) if entry and entry.user else compact_user(after)
+
+            quote_lines = []
             if added:
-                lines.append(f"+ {join_values(added[:8])}")
+                quote_lines.append(f"> + {join_values(added[:8])}")
             if removed:
-                lines.append(f"- {join_values(removed[:8])}")
+                quote_lines.append(f"> - {join_values(removed[:8])}")
+
+            role_changes = "\n".join(quote_lines)
+
             embed = discord.Embed(
-                description="🎭 Роли · " + "\n".join(lines),
+                description=f"🎭 {executor} изменил роли {compact_user(after)}:\n{role_changes}",
                 color=discord.Color.blurple(),
             )
             await self.send_embed(channel, embed, after)
@@ -293,7 +351,7 @@ class Logs(commands.Cog):
 
         if before.channel is None and after.channel is not None:
             embed = discord.Embed(
-                description=f"📞 Зашел · {channel_name(after.channel)}",
+                description=f"{compact_user(member)} зашел в {channel_name(after.channel)}",
                 color=discord.Color.green(),
             )
             await self.send_embed(channel, embed, member)
@@ -424,8 +482,9 @@ class Logs(commands.Cog):
 
         if not items:
             return
-
-        text = f"-# {compact_user(after)} · " + " · ".join(items)
+        
+        moscow_time = datetime.now(ZoneInfo("Europe/Moscow"))
+        text = f"-# {moscow_time.strftime("%H:%M:%S")} | {compact_user(after)} · " + " · ".join(items)
         await channel.send(text[:1900], allowed_mentions=discord.AllowedMentions.none())
 
 
