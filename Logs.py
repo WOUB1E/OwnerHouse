@@ -484,7 +484,7 @@ class Logs(commands.Cog):
             return
         
         moscow_time = datetime.now(ZoneInfo("Europe/Moscow"))
-        text = f"-# {moscow_time.strftime("%H:%M:%S")} | {compact_user(after)} · " + " · ".join(items)
+        text = f"-# {moscow_time.strftime('%H:%M:%S')} | {compact_user(after)} · " + " · ".join(items)
         await channel.send(text[:1900], allowed_mentions=discord.AllowedMentions.none())
 
 
