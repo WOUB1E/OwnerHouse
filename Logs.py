@@ -63,10 +63,7 @@ class Logs(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    def log_channel(self, guild: discord.Guild, name: str, channel_name: str) -> discord.TextChannel | None:
-        channel_name_str = str(channel_name).lower()
-        if "хозяин" in channel_name_str:
-            return None
+    def log_channel(self, guild: discord.Guild, name: str) -> discord.TextChannel | None:
         return discord.utils.get(guild.text_channels, name=name)
 
     async def target_log_channel(
@@ -76,6 +73,31 @@ class Logs(commands.Cog):
         default_channel_name: str,
     ) -> discord.TextChannel | None:
         return self.log_channel(guild, default_channel_name)
+
+    def process_voice_state(self, before_channel: discord.VoiceChannel | None, after_channel: discord.VoiceChannel | None):
+        """
+        Умная подмена каналов для маскировки комнат со словом 'хозяин'.
+        Возвращает кортеж (fake_before, fake_after, should_ignore).
+        """
+        before_is_secret = before_channel and "хозяин" in str(before_channel.name).lower()
+        after_is_secret = after_channel and "хозяин" in str(after_channel.name).lower()
+
+        # 1. Если оба канала "секретные", полностью игнорируем любые события (переход между ними, мут и т.д.)
+        if before_is_secret and after_is_secret:
+            return None, None, True
+
+        # 2. ФЕЙК ВЫХОДА: Переход из обычного канала в секретный
+        # Превращаем это в событие "вышел с обычного канала в никуда"
+        if after_is_secret and not before_is_secret:
+            return before_channel, None, False
+
+        # 3. ФЕЙК ВХОДА: Переход из секретного канала в обычный
+        # Превращаем это в событие "зашел в обычный канал из ниоткуда"
+        if before_is_secret and not after_is_secret:
+            return None, after_channel, False
+
+        # 4. В остальных случаях возвращаем каналы без изменений
+        return before_channel, after_channel, False
 
     async def send_embed(
         self,
@@ -128,7 +150,7 @@ class Logs(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         embed = discord.Embed(
-            description=f"{compact_user(member)} зашел на сервер 📥",
+            description=f"{compact_user(member)} зашел на server 📥",
             color=discord.Color.green(),
         )
         await self.send_embed(self.log_channel(member.guild, USER_LOG_CHANNEL_NAME), embed, member)
@@ -165,7 +187,6 @@ class Logs(commands.Cog):
             await self.send_embed(channel, embed, member)
             return
 
-        # 3. ОБЫЧНЫЙ ВЫХОД (если не бан и не кик)
         embed = discord.Embed(
             description=f"{compact_user(member)} выебан кабаном в лесу 📤",
             color=discord.Color.red(),
@@ -300,6 +321,9 @@ class Logs(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        if message.channel and "хозяин" in str(message.channel.name).lower():
+            return
+
         channel = await self.target_log_channel(message.guild, message.channel, TEXT_LOG_CHANNEL_NAME)
         if channel is None:
             return
@@ -325,6 +349,9 @@ class Logs(commands.Cog):
         if before.content == after.content:
             return
 
+        if before.channel and "хозяин" in str(before.channel.name).lower():
+            return
+
         channel = await self.target_log_channel(before.guild, before.channel, TEXT_LOG_CHANNEL_NAME)
         if channel is None:
             return
@@ -341,56 +368,71 @@ class Logs(commands.Cog):
     async def on_voice_state_update(
         self,
         member: discord.Member,
-        before: discord.VoiceState,
-        after: discord.VoiceState,
+        raw_before: discord.VoiceState,
+        raw_after: discord.VoiceState,
     ):
         if member.bot:
             return
 
-        source_channel = after.channel or before.channel
+        # Запускаем нашу систему подмены каналов
+        before_channel, after_channel, should_ignore = self.process_voice_state(raw_before.channel, raw_after.channel)
+
+        if should_ignore:
+            return
+
+        # Если после подмены оказалось, что изменений каналов нет (например, изменился только статус микрофона внутри обычной комнаты)
+        if before_channel == after_channel and before_channel is not None:
+            # Маскируем действия с микрофоном/звуком, если они происходят в скрытом канале
+            if "хозяин" in str(before_channel.name).lower():
+                return
+
+        source_channel = after_channel or before_channel
         channel = await self.target_log_channel(member.guild, source_channel, VOICE_LOG_CHANNEL_NAME)
         if channel is None:
             return
 
-        if before.channel is None and after.channel is not None:
+        # СЛУЧАЙ 1: Заход в войс (Или фейковый заход, когда вышли из секретной комнаты в обычную)
+        if before_channel is None and after_channel is not None:
             embed = discord.Embed(
-                description=f"{compact_user(member)} зашел в {channel_name(after.channel)}",
+                description=f"{compact_user(member)} зашел в {channel_name(after_channel)}",
                 color=discord.Color.green(),
             )
             await self.send_embed(channel, embed, member)
             return
 
-        if before.channel is not None and after.channel is None:
+        # СЛУЧАЙ 2: Полный выход из войса (Или фейковый выход, когда перешли из обычной комнаты в секретную)
+        if before_channel is not None and after_channel is None:
             await asyncio.sleep(0.8)
             entry = await self.recent_audit_entry(
                 member.guild,
                 discord.AuditLogAction.member_disconnect,
                 member,
-                channel=before.channel,
+                channel=before_channel,
             )
             if entry:
                 executor = compact_user(entry.user) if entry.user else "`неизвестно`"
                 embed = discord.Embed(
-                    description=f"🚷 Отключен · {channel_name(before.channel)} · модератор {executor}",
+                    description=f"🚷 Отключен · {channel_name(before_channel)} · модератор {executor}",
                     color=discord.Color.orange(),
                 )
             else:
                 embed = discord.Embed(
-                    description=f"{compact_user(member)} выышел с {channel_name(before.channel)}",
+                    description=f"{compact_user(member)} вышел с {channel_name(before_channel)}",
                     color=discord.Color.red(),
                 )
             await self.send_embed(channel, embed, member)
             return
 
-        if before.channel != after.channel and after.channel is not None:
+        # СЛУЧАЙ 3: Обычное перемещение между доступными (публичными) каналами
+        if before_channel != after_channel and after_channel is not None:
             await asyncio.sleep(0.8)
             entry = await self.recent_audit_entry(
                 member.guild,
                 discord.AuditLogAction.member_move,
                 member,
-                channel=after.channel,
+                channel=after_channel,
             )
-            route = f"{channel_name(before.channel)} → {channel_name(after.channel)}"
+            route = f"{channel_name(before_channel)} → {channel_name(after_channel)}"
             if entry:
                 executor = compact_user(entry.user) if entry.user else "`неизвестно`"
                 embed = discord.Embed(
@@ -405,8 +447,9 @@ class Logs(commands.Cog):
             await self.send_embed(channel, embed, member)
             return
 
-        if before.self_deaf != after.self_deaf:
-            state = "выключил звук" if after.self_deaf else "включил звук"
+        # Статусы звука обрабатываем только если они не замаскированы
+        if raw_before.self_deaf != raw_after.self_deaf:
+            state = "выключил звук" if raw_after.self_deaf else "включил звук"
             embed = discord.Embed(
                 description=f"🎧 Сам · {state}",
                 color=discord.Color.dark_grey(),
@@ -414,8 +457,8 @@ class Logs(commands.Cog):
             await self.send_embed(channel, embed, member)
             return
 
-        if before.deaf != after.deaf:
-            state = "выключили звук" if after.deaf else "включили звук"
+        if raw_before.deaf != raw_after.deaf:
+            state = "выключили звук" if raw_after.deaf else "включили звук"
             embed = discord.Embed(
                 description=f"⛔ Админ · {state}",
                 color=discord.Color.orange(),
@@ -423,8 +466,8 @@ class Logs(commands.Cog):
             await self.send_embed(channel, embed, member)
             return
 
-        if before.self_mute != after.self_mute:
-            state = "замутился" if after.self_mute else "размутился"
+        if raw_before.self_mute != raw_after.self_mute:
+            state = "замутился" if raw_after.self_mute else "размутился"
             embed = discord.Embed(
                 description=f"🎙️ Сам · {state}",
                 color=discord.Color.dark_grey(),
@@ -432,8 +475,8 @@ class Logs(commands.Cog):
             await self.send_embed(channel, embed, member)
             return
 
-        if before.mute != after.mute:
-            state = "замучен" if after.mute else "размучен"
+        if raw_before.mute != raw_after.mute:
+            state = "замучен" if raw_after.mute else "размучен"
             embed = discord.Embed(
                 description=f"🔇 Админ · {state}",
                 color=discord.Color.orange(),
@@ -486,8 +529,8 @@ class Logs(commands.Cog):
         if not items:
             return
         
-        moscow_time = datetime.now(ZoneInfo("Europe/Moscow"))
-        text = f"-# {moscow_time.strftime('%H:%M:%S')} | {compact_user(after)} · " + " · ".join(items)
+        time = datetime.now()
+        text = f"-# {time.strftime('%H:%M:%S')} | {compact_user(after)} · " + " · ".join(items)
         await channel.send(text[:1900], allowed_mentions=discord.AllowedMentions.none())
 
 
